@@ -16,7 +16,8 @@ git config --global --add safe.directory ($repoPath -replace "\\", "/") | Out-Nu
 
 gh auth status
 
-if (-not (git remote get-url origin 2>$null)) {
+$originUrl = git remote get-url origin 2>$null
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($originUrl)) {
   gh repo create $RepoName --private --source . --remote origin --push
 } else {
   git push -u origin main
