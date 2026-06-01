@@ -85,15 +85,31 @@ sudo loginctl enable-linger "$USER"
 
 ## Сборка RPM
 
-Один из простых вариантов:
+RPM и DEB можно собрать одной командой на Linux-машине с `rpmbuild` и
+`dpkg-deb`:
+
+```bash
+bash scripts/build-packages.sh 0.2.1
+```
+
+Готовые файлы появятся в `dist/`.
+
+Ручной вариант для RPM:
 
 ```bash
 mkdir -p ~/rpmbuild/SOURCES
-tar --transform 's,^,idle-shutdown-guard-0.2.0/,' \
-  -czf ~/rpmbuild/SOURCES/idle-shutdown-guard-0.2.0.tar.gz \
+tar --transform 's,^,idle-shutdown-guard-0.2.1/,' \
+  -czf ~/rpmbuild/SOURCES/idle-shutdown-guard-0.2.1.tar.gz \
   src config icons systemd packaging
 rpmbuild -ba packaging/idle-shutdown-guard.spec
 ```
+
+## GitHub Release
+
+Workflow `.github/workflows/release-packages.yml` собирает `.rpm`, `.src.rpm`,
+`.deb` и архив исходников, затем прикладывает их к GitHub Release. Он
+запускается автоматически при пуше тега `v*`, либо вручную через
+`workflow_dispatch` с номером версии.
 
 После установки:
 

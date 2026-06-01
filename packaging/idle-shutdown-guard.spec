@@ -1,7 +1,8 @@
 Name:           idle-shutdown-guard
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        User-session idle shutdown guard
+%{!?_userunitdir:%global _userunitdir %{_prefix}/lib/systemd/user}
 
 License:        MIT
 Source0:        %{name}-%{version}.tar.gz
@@ -41,6 +42,9 @@ install -Dpm0644 icons/idle-shutdown-guard.svg \
 %{_datadir}/icons/hicolor/scalable/apps/idle-shutdown-guard.svg
 
 %changelog
+* Mon Jun 01 2026 Codex <codex@example.invalid> - 0.2.1-1
+- Add RPM and DEB release package automation.
+
 * Mon Jun 01 2026 Codex <codex@example.invalid> - 0.2.0-1
 - Add tray icon and graphical settings form.
 

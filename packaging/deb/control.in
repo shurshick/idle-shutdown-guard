@@ -1,0 +1,12 @@
+Package: idle-shutdown-guard
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: all
+Maintainer: Codex <codex@example.invalid>
+Depends: python3, python3-gi, gir1.2-gtk-3.0, systemd, zenity
+Recommends: xprintidle
+Description: User-session idle shutdown guard
+ Small user-session service that watches desktop idle time after a configured
+ hour, warns the user, allows postponing shutdown, and powers off the computer
+ when the warning is ignored. It can also show a tray icon with a settings form.

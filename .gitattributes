@@ -1,0 +1,6 @@
+*.sh text eol=lf
+*.service text eol=lf
+*.spec text eol=lf
+*.ini text eol=lf
+*.yml text eol=lf
+src/idle-shutdown-guard text eol=lf
