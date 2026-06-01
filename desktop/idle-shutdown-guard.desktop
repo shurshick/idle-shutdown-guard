@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Idle Shutdown Guard
+Name[ru]=Контроль выключения при простое
+Comment=Warn and shut down the computer after user inactivity
+Comment[ru]=Предупреждает и выключает компьютер после неактивности пользователя
+Exec=/usr/bin/idle-shutdown-guard
+Icon=idle-shutdown-guard
+Terminal=false
+Categories=Utility;System;
+X-GNOME-Autostart-enabled=true

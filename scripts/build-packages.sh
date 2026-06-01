@@ -43,6 +43,7 @@ fi
 if command -v dpkg-deb >/dev/null 2>&1; then
   install -Dpm0755 "$ROOT_DIR/src/$NAME" "$DEB_ROOT/usr/bin/$NAME"
   install -Dpm0644 "$ROOT_DIR/config/config.ini" "$DEB_ROOT/etc/$NAME/config.ini"
+  install -Dpm0644 "$ROOT_DIR/desktop/$NAME.desktop" "$DEB_ROOT/etc/xdg/autostart/$NAME.desktop"
   install -Dpm0644 "$ROOT_DIR/systemd/$NAME.service" "$DEB_ROOT/usr/lib/systemd/user/$NAME.service"
   install -Dpm0644 "$ROOT_DIR/icons/$NAME.svg" "$DEB_ROOT/usr/share/icons/hicolor/scalable/apps/$NAME.svg"
   install -Dpm0644 "$ROOT_DIR/README.md" "$DEB_ROOT/usr/share/doc/$NAME/README.md"
