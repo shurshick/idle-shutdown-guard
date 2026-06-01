@@ -27,7 +27,8 @@ git push origin $Tag
 
 $archivePath = Resolve-Path -LiteralPath (Join-Path $repoPath "..\idle-shutdown-guard-0.1.0.tar.gz")
 
-if (gh release view $Tag 2>$null) {
+$releaseTags = @(gh release list --json tagName --jq ".[].tagName")
+if ($releaseTags -contains $Tag) {
   gh release upload $Tag $archivePath --clobber
 } else {
   gh release create $Tag $archivePath `
