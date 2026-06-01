@@ -29,6 +29,9 @@ $archivePath = Resolve-Path -LiteralPath (Join-Path $repoPath "..\idle-shutdown-
 
 $releaseTags = @(gh release list --json tagName --jq ".[].tagName")
 if ($releaseTags -contains $Tag) {
+  gh release edit $Tag `
+    --title "idle-shutdown-guard $Tag" `
+    --notes-file RELEASE.md
   gh release upload $Tag $archivePath --clobber
 } else {
   gh release create $Tag $archivePath `
