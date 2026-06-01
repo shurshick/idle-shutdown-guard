@@ -1,6 +1,7 @@
 param(
   [string]$RepoName = "idle-shutdown-guard",
-  [string]$Tag = "v0.1.0"
+  [string]$Version = "0.2.0",
+  [string]$Tag = "v$Version"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,7 @@ if ($remotes -notcontains "origin") {
 
 git push origin $Tag
 
-$archivePath = Resolve-Path -LiteralPath (Join-Path $repoPath "..\idle-shutdown-guard-0.1.0.tar.gz")
+$archivePath = Resolve-Path -LiteralPath (Join-Path $repoPath "..\idle-shutdown-guard-$Version.tar.gz")
 
 $releaseTags = @(gh release list --json tagName --jq ".[].tagName")
 if ($releaseTags -contains $Tag) {

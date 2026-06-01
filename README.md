@@ -8,6 +8,9 @@
 ## Как это работает
 
 - Служба запускается в пользовательской systemd-сессии.
+- Если доступен GTK, программа показывает иконку в системном трее. Через меню
+  можно открыть статус, изменить настройки, запустить проверку вручную или
+  выйти из программы.
 - Активность определяется через `xprintidle` на X11, если он установлен.
 - Если `xprintidle` недоступен, используется `systemd-logind`.
 - Диалог показывается через `zenity`, затем через `kdialog`, затем через
@@ -40,6 +43,7 @@ systemctl poweroff --ignore-inhibitors
 
 ```ini
 [settings]
+tray_enabled = yes
 begin_hour = 22
 idle_minutes = 60
 warning_timeout_minutes = 5
@@ -50,12 +54,22 @@ shutdown_command = systemctl poweroff --ignore-inhibitors
 
 `begin_hour = 22` означает, что проверка выполняется с 22:00 до 23:59.
 
+`tray_enabled = yes` включает иконку в трее. Если GTK или системный трей
+недоступны, служба автоматически продолжит работу без иконки.
+
+Настройки из формы сохраняются в:
+
+```text
+~/.config/idle-shutdown-guard/config.ini
+```
+
 ## Ручная установка без RPM
 
 ```bash
 sudo install -Dpm0755 src/idle-shutdown-guard /usr/bin/idle-shutdown-guard
 sudo install -Dpm0644 config/config.ini /etc/idle-shutdown-guard/config.ini
 sudo install -Dpm0644 systemd/idle-shutdown-guard.service /usr/lib/systemd/user/idle-shutdown-guard.service
+sudo install -Dpm0644 icons/idle-shutdown-guard.svg /usr/share/icons/hicolor/scalable/apps/idle-shutdown-guard.svg
 systemctl --user daemon-reload
 systemctl --user enable --now idle-shutdown-guard.service
 ```
@@ -75,9 +89,9 @@ sudo loginctl enable-linger "$USER"
 
 ```bash
 mkdir -p ~/rpmbuild/SOURCES
-tar --transform 's,^,idle-shutdown-guard-0.1.0/,' \
-  -czf ~/rpmbuild/SOURCES/idle-shutdown-guard-0.1.0.tar.gz \
-  src config systemd packaging
+tar --transform 's,^,idle-shutdown-guard-0.2.0/,' \
+  -czf ~/rpmbuild/SOURCES/idle-shutdown-guard-0.2.0.tar.gz \
+  src config icons systemd packaging
 rpmbuild -ba packaging/idle-shutdown-guard.spec
 ```
 
@@ -94,6 +108,7 @@ systemctl --user enable --now idle-shutdown-guard.service
 
 ```ini
 [settings]
+tray_enabled = yes
 begin_hour = 0
 idle_minutes = 1
 warning_timeout_minutes = 1

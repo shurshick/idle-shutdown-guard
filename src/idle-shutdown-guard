@@ -13,15 +13,24 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 
 APP_NAME = "idle-shutdown-guard"
 SYSTEM_CONFIG = Path("/etc/idle-shutdown-guard/config.ini")
 USER_CONFIG = Path.home() / ".config" / APP_NAME / "config.ini"
+ICON_CANDIDATES = [
+    Path("/usr/share/icons/hicolor/scalable/apps/idle-shutdown-guard.svg"),
+    Path(__file__).resolve().parent.parent / "icons" / "idle-shutdown-guard.svg",
+]
+
+Gtk: Any = None
+GLib: Any = None
 
 
 @dataclass
 class Config:
+    tray_enabled: bool = True
     begin_hour: int = 22
     idle_minutes: int = 60
     warning_timeout_minutes: int = 5
@@ -40,6 +49,15 @@ def load_config() -> Config:
     section = parser["settings"] if parser.has_section("settings") else {}
     cfg = Config()
 
+    def get_bool(name: str, default: bool) -> bool:
+        raw = section.get(name, str(default)).strip().lower()
+        if raw in {"1", "yes", "true", "on"}:
+            return True
+        if raw in {"0", "no", "false", "off"}:
+            return False
+        log(f"invalid boolean for {name}={raw!r}; using {default}")
+        return default
+
     def get_int(name: str, default: int, minimum: int, maximum: int) -> int:
         raw = section.get(name, str(default))
         try:
@@ -52,6 +70,7 @@ def load_config() -> Config:
             return default
         return value
 
+    cfg.tray_enabled = get_bool("tray_enabled", cfg.tray_enabled)
     cfg.begin_hour = get_int("begin_hour", cfg.begin_hour, 0, 23)
     cfg.idle_minutes = get_int("idle_minutes", cfg.idle_minutes, 1, 24 * 60)
     cfg.warning_timeout_minutes = get_int(
@@ -63,6 +82,22 @@ def load_config() -> Config:
     )
     cfg.shutdown_command = section.get("shutdown_command", cfg.shutdown_command).strip()
     return cfg
+
+
+def save_user_config(cfg: Config) -> None:
+    USER_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    parser = configparser.ConfigParser()
+    parser["settings"] = {
+        "tray_enabled": "yes" if cfg.tray_enabled else "no",
+        "begin_hour": str(cfg.begin_hour),
+        "idle_minutes": str(cfg.idle_minutes),
+        "warning_timeout_minutes": str(cfg.warning_timeout_minutes),
+        "defer_minutes": str(cfg.defer_minutes),
+        "check_interval_seconds": str(cfg.check_interval_seconds),
+        "shutdown_command": cfg.shutdown_command,
+    }
+    with USER_CONFIG.open("w", encoding="utf-8") as handle:
+        parser.write(handle)
 
 
 def command_output(args: list[str]) -> str | None:
@@ -140,6 +175,63 @@ def warning_text(cfg: Config) -> str:
     )
 
 
+def load_gtk() -> bool:
+    global Gtk, GLib
+    if Gtk is not None and GLib is not None:
+        return True
+    try:
+        import gi
+
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import GLib as loaded_glib
+        from gi.repository import Gtk as loaded_gtk
+    except (ImportError, ValueError):
+        return False
+    ok, _ = loaded_gtk.init_check(None)
+    if not ok:
+        return False
+    Gtk = loaded_gtk
+    GLib = loaded_glib
+    return True
+
+
+def icon_path() -> str | None:
+    for candidate in ICON_CANDIDATES:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def ask_defer_with_gtk(cfg: Config) -> bool | None:
+    if Gtk is None:
+        return None
+
+    dialog = Gtk.MessageDialog(
+        transient_for=None,
+        flags=0,
+        message_type=Gtk.MessageType.WARNING,
+        buttons=Gtk.ButtonsType.NONE,
+        text="Плановое выключение",
+    )
+    dialog.format_secondary_text(warning_text(cfg))
+    dialog.add_button(f"Отложить на {cfg.defer_minutes} минут", Gtk.ResponseType.YES)
+    dialog.add_button("Выключить сейчас", Gtk.ResponseType.NO)
+    dialog.set_keep_above(True)
+    dialog.set_default_response(Gtk.ResponseType.YES)
+
+    timeout_id = GLib.timeout_add_seconds(
+        cfg.warning_timeout_minutes * 60,
+        lambda: dialog.response(Gtk.ResponseType.NO) or False,
+    )
+    response = dialog.run()
+    if timeout_id:
+        GLib.source_remove(timeout_id)
+    dialog.destroy()
+    while Gtk.events_pending():
+        Gtk.main_iteration()
+    return response == Gtk.ResponseType.YES
+
+
 def ask_defer_with_zenity(cfg: Config) -> bool | None:
     if not shutil.which("zenity"):
         return None
@@ -197,7 +289,7 @@ def ask_defer_with_notification(cfg: Config) -> bool:
 
 
 def ask_defer(cfg: Config) -> bool:
-    for asker in (ask_defer_with_zenity, ask_defer_with_kdialog):
+    for asker in (ask_defer_with_gtk, ask_defer_with_zenity, ask_defer_with_kdialog):
         try:
             answer = asker(cfg)
         except subprocess.TimeoutExpired:
@@ -219,43 +311,203 @@ def should_watch_now(cfg: Config, now: datetime) -> bool:
     return now.hour >= cfg.begin_hour
 
 
-def main() -> int:
-    log("started")
+@dataclass
+class GuardState:
     defer_until: datetime | None = None
-    warned_detector_unavailable = False
+    warned_detector_unavailable: bool = False
+
+
+def status_text(cfg: Config, state: GuardState) -> str:
+    now = datetime.now()
+    idle = idle_seconds()
+    parts = [f"Проверка после {cfg.begin_hour:02d}:00"]
+    if state.defer_until and now < state.defer_until:
+        parts.append(f"Выключение отложено до {state.defer_until.strftime('%H:%M')}")
+    if idle is None:
+        parts.append("Не удалось определить неактивность")
+    else:
+        parts.append(f"Неактивность: {int(idle // 60)} мин")
+    return "\n".join(parts)
+
+
+def check_once(cfg: Config, state: GuardState, force: bool = False) -> None:
+    now = datetime.now()
+
+    if not force and not should_watch_now(cfg, now):
+        state.defer_until = None
+        return
+
+    if not force and state.defer_until and now < state.defer_until:
+        return
+
+    idle = idle_seconds()
+    if idle is None:
+        if not state.warned_detector_unavailable:
+            log("cannot determine user idle time; waiting instead of shutting down")
+            state.warned_detector_unavailable = True
+        return
+
+    state.warned_detector_unavailable = False
+    if force or idle >= cfg.idle_minutes * 60:
+        log(f"user idle for {int(idle)} seconds; showing warning")
+        if ask_defer(cfg):
+            state.defer_until = datetime.now() + timedelta(minutes=cfg.defer_minutes)
+            log(f"shutdown deferred until {state.defer_until.isoformat(timespec='seconds')}")
+        else:
+            run_shutdown(cfg)
+
+
+def show_status_dialog(cfg: Config, state: GuardState) -> None:
+    if Gtk is None:
+        return
+    dialog = Gtk.MessageDialog(
+        transient_for=None,
+        flags=0,
+        message_type=Gtk.MessageType.INFO,
+        buttons=Gtk.ButtonsType.OK,
+        text="Idle Shutdown Guard",
+    )
+    dialog.format_secondary_text(status_text(cfg, state))
+    dialog.run()
+    dialog.destroy()
+
+
+def show_settings_dialog(cfg: Config) -> Config | None:
+    if Gtk is None:
+        return None
+
+    dialog = Gtk.Dialog(title="Настройки выключения", flags=0)
+    dialog.add_button("Отмена", Gtk.ResponseType.CANCEL)
+    dialog.add_button("Сохранить", Gtk.ResponseType.OK)
+    dialog.set_default_size(520, 260)
+
+    area = dialog.get_content_area()
+    grid = Gtk.Grid(column_spacing=12, row_spacing=10, margin=16)
+    area.add(grid)
+
+    tray_check = Gtk.CheckButton(label="Показывать иконку в трее")
+    tray_check.set_active(cfg.tray_enabled)
+
+    begin = Gtk.SpinButton.new_with_range(0, 23, 1)
+    begin.set_value(cfg.begin_hour)
+    idle = Gtk.SpinButton.new_with_range(1, 1440, 1)
+    idle.set_value(cfg.idle_minutes)
+    timeout = Gtk.SpinButton.new_with_range(1, 60, 1)
+    timeout.set_value(cfg.warning_timeout_minutes)
+    defer = Gtk.SpinButton.new_with_range(1, 1440, 1)
+    defer.set_value(cfg.defer_minutes)
+    interval = Gtk.SpinButton.new_with_range(5, 3600, 5)
+    interval.set_value(cfg.check_interval_seconds)
+    shutdown = Gtk.Entry()
+    shutdown.set_text(cfg.shutdown_command)
+
+    rows = [
+        ("Начинать предупреждать после часа", begin),
+        ("Неактивность до предупреждения, минут", idle),
+        ("Ожидание ответа, минут", timeout),
+        ("Отложить на, минут", defer),
+        ("Интервал проверки, секунд", interval),
+        ("Команда выключения", shutdown),
+    ]
+
+    grid.attach(tray_check, 0, 0, 2, 1)
+    for row, (label, widget) in enumerate(rows, start=1):
+        grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
+        grid.attach(widget, 1, row, 1, 1)
+
+    dialog.show_all()
+    response = dialog.run()
+    if response != Gtk.ResponseType.OK:
+        dialog.destroy()
+        return None
+
+    updated = Config(
+        tray_enabled=tray_check.get_active(),
+        begin_hour=begin.get_value_as_int(),
+        idle_minutes=idle.get_value_as_int(),
+        warning_timeout_minutes=timeout.get_value_as_int(),
+        defer_minutes=defer.get_value_as_int(),
+        check_interval_seconds=interval.get_value_as_int(),
+        shutdown_command=shutdown.get_text().strip(),
+    )
+    dialog.destroy()
+    save_user_config(updated)
+    log(f"saved user settings to {USER_CONFIG}")
+    return updated
+
+
+def run_tray_loop() -> int:
+    if not load_gtk():
+        log("GTK is unavailable; running without tray")
+        return run_daemon_loop()
+
+    log("started with tray")
+    state = GuardState()
+    cfg_holder = {"cfg": load_config()}
+    status_icon = Gtk.StatusIcon()
+    found_icon = icon_path()
+    if found_icon:
+        status_icon.set_from_file(found_icon)
+    else:
+        status_icon.set_from_icon_name("system-shutdown")
+    status_icon.set_title("Idle Shutdown Guard")
+    status_icon.set_tooltip_text("Idle Shutdown Guard")
+    status_icon.set_visible(True)
+
+    def refresh_timer() -> bool:
+        cfg_holder["cfg"] = load_config()
+        check_once(cfg_holder["cfg"], state)
+        status_icon.set_tooltip_text(status_text(cfg_holder["cfg"], state))
+        return True
+
+    def popup_menu(icon: Any, button: int, activate_time: int) -> None:
+        menu = Gtk.Menu()
+
+        status_item = Gtk.MenuItem(label="Статус")
+        settings_item = Gtk.MenuItem(label="Настройки")
+        check_item = Gtk.MenuItem(label="Проверить сейчас")
+        quit_item = Gtk.MenuItem(label="Выход")
+
+        status_item.connect("activate", lambda *_: show_status_dialog(cfg_holder["cfg"], state))
+
+        def open_settings(*_: Any) -> None:
+            updated = show_settings_dialog(cfg_holder["cfg"])
+            if updated is not None:
+                cfg_holder["cfg"] = updated
+                status_icon.set_tooltip_text(status_text(updated, state))
+
+        settings_item.connect("activate", open_settings)
+        check_item.connect("activate", lambda *_: check_once(cfg_holder["cfg"], state, force=True))
+        quit_item.connect("activate", lambda *_: Gtk.main_quit())
+
+        for item in (status_item, settings_item, check_item, quit_item):
+            menu.append(item)
+        menu.show_all()
+        menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, activate_time)
+
+    status_icon.connect("popup-menu", popup_menu)
+    status_icon.connect("activate", lambda *_: show_status_dialog(cfg_holder["cfg"], state))
+    GLib.timeout_add_seconds(max(5, cfg_holder["cfg"].check_interval_seconds), refresh_timer)
+    refresh_timer()
+    Gtk.main()
+    return 0
+
+
+def run_daemon_loop() -> int:
+    log("started")
+    state = GuardState()
 
     while True:
         cfg = load_config()
-        now = datetime.now()
+        check_once(cfg, state)
+        time.sleep(cfg.check_interval_seconds)
 
-        if not should_watch_now(cfg, now):
-            defer_until = None
-            time.sleep(cfg.check_interval_seconds)
-            continue
 
-        if defer_until and now < defer_until:
-            time.sleep(cfg.check_interval_seconds)
-            continue
-
-        idle = idle_seconds()
-        if idle is None:
-            if not warned_detector_unavailable:
-                log("cannot determine user idle time; waiting instead of shutting down")
-                warned_detector_unavailable = True
-            time.sleep(cfg.check_interval_seconds)
-            continue
-
-        warned_detector_unavailable = False
-        if idle >= cfg.idle_minutes * 60:
-            log(f"user idle for {int(idle)} seconds; showing warning")
-            if ask_defer(cfg):
-                defer_until = datetime.now() + timedelta(minutes=cfg.defer_minutes)
-                log(f"shutdown deferred until {defer_until.isoformat(timespec='seconds')}")
-            else:
-                run_shutdown(cfg)
-                time.sleep(cfg.check_interval_seconds)
-        else:
-            time.sleep(cfg.check_interval_seconds)
+def main() -> int:
+    cfg = load_config()
+    if cfg.tray_enabled:
+        return run_tray_loop()
+    return run_daemon_loop()
 
 
 if __name__ == "__main__":
