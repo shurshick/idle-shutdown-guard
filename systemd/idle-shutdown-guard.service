@@ -1,0 +1,14 @@
+[Unit]
+Description=Idle shutdown guard
+Documentation=man:systemd.service(5)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/idle-shutdown-guard
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

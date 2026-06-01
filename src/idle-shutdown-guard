@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""Idle shutdown guard for systemd desktop sessions."""
+
+from __future__ import annotations
+
+import configparser
+import getpass
+import os
+import shlex
+import shutil
+import subprocess
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+
+
+APP_NAME = "idle-shutdown-guard"
+SYSTEM_CONFIG = Path("/etc/idle-shutdown-guard/config.ini")
+USER_CONFIG = Path.home() / ".config" / APP_NAME / "config.ini"
+
+
+@dataclass
+class Config:
+    begin_hour: int = 22
+    idle_minutes: int = 60
+    warning_timeout_minutes: int = 5
+    defer_minutes: int = 60
+    check_interval_seconds: int = 60
+    shutdown_command: str = "systemctl poweroff --ignore-inhibitors"
+
+
+def log(message: str) -> None:
+    print(f"{datetime.now().isoformat(timespec='seconds')} {APP_NAME}: {message}", flush=True)
+
+
+def load_config() -> Config:
+    parser = configparser.ConfigParser()
+    parser.read([SYSTEM_CONFIG, USER_CONFIG])
+    section = parser["settings"] if parser.has_section("settings") else {}
+    cfg = Config()
+
+    def get_int(name: str, default: int, minimum: int, maximum: int) -> int:
+        raw = section.get(name, str(default))
+        try:
+            value = int(raw)
+        except ValueError:
+            log(f"invalid integer for {name}={raw!r}; using {default}")
+            return default
+        if not minimum <= value <= maximum:
+            log(f"{name}={value} is outside {minimum}..{maximum}; using {default}")
+            return default
+        return value
+
+    cfg.begin_hour = get_int("begin_hour", cfg.begin_hour, 0, 23)
+    cfg.idle_minutes = get_int("idle_minutes", cfg.idle_minutes, 1, 24 * 60)
+    cfg.warning_timeout_minutes = get_int(
+        "warning_timeout_minutes", cfg.warning_timeout_minutes, 1, 60
+    )
+    cfg.defer_minutes = get_int("defer_minutes", cfg.defer_minutes, 1, 24 * 60)
+    cfg.check_interval_seconds = get_int(
+        "check_interval_seconds", cfg.check_interval_seconds, 5, 3600
+    )
+    cfg.shutdown_command = section.get("shutdown_command", cfg.shutdown_command).strip()
+    return cfg
+
+
+def command_output(args: list[str]) -> str | None:
+    try:
+        result = subprocess.run(
+            args,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def idle_from_xprintidle() -> float | None:
+    if not os.environ.get("DISPLAY") or not shutil.which("xprintidle"):
+        return None
+    out = command_output(["xprintidle"])
+    if out is None:
+        return None
+    try:
+        return int(out) / 1000.0
+    except ValueError:
+        return None
+
+
+def parse_loginctl_properties(text: str) -> dict[str, str]:
+    props: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            props[key] = value
+    return props
+
+
+def idle_from_logind() -> float | None:
+    user = getpass.getuser()
+    out = command_output(["loginctl", "show-user", user, "--no-pager"])
+    if out is None:
+        return None
+
+    props = parse_loginctl_properties(out)
+    if props.get("IdleHint", "no").lower() not in {"yes", "true"}:
+        return 0.0
+
+    raw_since = props.get("IdleSinceHint", "0")
+    try:
+        idle_since_usec = int(raw_since)
+    except ValueError:
+        return None
+    if idle_since_usec <= 0:
+        return None
+
+    return max(0.0, time.time() - (idle_since_usec / 1_000_000.0))
+
+
+def idle_seconds() -> float | None:
+    x11_idle = idle_from_xprintidle()
+    if x11_idle is not None:
+        return x11_idle
+    return idle_from_logind()
+
+
+def warning_text(cfg: Config) -> str:
+    return (
+        "Пользователь неактивен больше "
+        f"{cfg.idle_minutes} минут.\n\n"
+        "Компьютер будет выключен, если в течение "
+        f"{cfg.warning_timeout_minutes} минут не отложить выключение."
+    )
+
+
+def ask_defer_with_zenity(cfg: Config) -> bool | None:
+    if not shutil.which("zenity"):
+        return None
+    result = subprocess.run(
+        [
+            "zenity",
+            "--question",
+            f"--timeout={cfg.warning_timeout_minutes * 60}",
+            "--title=Плановое выключение",
+            f"--text={warning_text(cfg)}",
+            f"--ok-label=Отложить на {cfg.defer_minutes} минут",
+            "--cancel-label=Выключить сейчас",
+            "--width=420",
+        ],
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def ask_defer_with_kdialog(cfg: Config) -> bool | None:
+    if not shutil.which("kdialog"):
+        return None
+    result = subprocess.run(
+        [
+            "kdialog",
+            "--title",
+            "Плановое выключение",
+            "--yesno",
+            warning_text(cfg),
+            "--yes-label",
+            f"Отложить на {cfg.defer_minutes} минут",
+            "--no-label",
+            "Выключить сейчас",
+        ],
+        check=False,
+        timeout=cfg.warning_timeout_minutes * 60,
+    )
+    return result.returncode == 0
+
+
+def ask_defer_with_notification(cfg: Config) -> bool:
+    if shutil.which("notify-send"):
+        subprocess.run(
+            [
+                "notify-send",
+                "-u",
+                "critical",
+                "Плановое выключение",
+                warning_text(cfg),
+            ],
+            check=False,
+        )
+    time.sleep(cfg.warning_timeout_minutes * 60)
+    return False
+
+
+def ask_defer(cfg: Config) -> bool:
+    for asker in (ask_defer_with_zenity, ask_defer_with_kdialog):
+        try:
+            answer = asker(cfg)
+        except subprocess.TimeoutExpired:
+            return False
+        if answer is not None:
+            return answer
+    return ask_defer_with_notification(cfg)
+
+
+def run_shutdown(cfg: Config) -> None:
+    if not cfg.shutdown_command:
+        log("shutdown_command is empty; refusing to shut down")
+        return
+    log(f"executing shutdown command: {cfg.shutdown_command}")
+    subprocess.run(shlex.split(cfg.shutdown_command), check=False)
+
+
+def should_watch_now(cfg: Config, now: datetime) -> bool:
+    return now.hour >= cfg.begin_hour
+
+
+def main() -> int:
+    log("started")
+    defer_until: datetime | None = None
+    warned_detector_unavailable = False
+
+    while True:
+        cfg = load_config()
+        now = datetime.now()
+
+        if not should_watch_now(cfg, now):
+            defer_until = None
+            time.sleep(cfg.check_interval_seconds)
+            continue
+
+        if defer_until and now < defer_until:
+            time.sleep(cfg.check_interval_seconds)
+            continue
+
+        idle = idle_seconds()
+        if idle is None:
+            if not warned_detector_unavailable:
+                log("cannot determine user idle time; waiting instead of shutting down")
+                warned_detector_unavailable = True
+            time.sleep(cfg.check_interval_seconds)
+            continue
+
+        warned_detector_unavailable = False
+        if idle >= cfg.idle_minutes * 60:
+            log(f"user idle for {int(idle)} seconds; showing warning")
+            if ask_defer(cfg):
+                defer_until = datetime.now() + timedelta(minutes=cfg.defer_minutes)
+                log(f"shutdown deferred until {defer_until.isoformat(timespec='seconds')}")
+            else:
+                run_shutdown(cfg)
+                time.sleep(cfg.check_interval_seconds)
+        else:
+            time.sleep(cfg.check_interval_seconds)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        log("stopped")
+        raise SystemExit(0)

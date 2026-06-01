@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.rpm
+*.srpm
+*.tar.gz
+build/
+dist/
+rpmbuild/
