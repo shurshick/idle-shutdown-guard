@@ -16,6 +16,9 @@ Set-Location -LiteralPath $repoPath
 git config --global --add safe.directory ($repoPath -replace "\\", "/") | Out-Null
 
 gh auth status
+if ($LASTEXITCODE -ne 0) {
+  throw "GitHub CLI is not authenticated. Run: gh auth login -h github.com"
+}
 
 $remotes = @(git remote)
 if ($remotes -notcontains "origin") {
