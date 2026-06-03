@@ -45,7 +45,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idle-shutdown-guard-packages-${{ steps.version.outputs.version }}
-          path: dist/*
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
 
       - name: Attach packages to release
         uses: softprops/action-gh-release@v2
@@ -53,4 +56,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: idle-shutdown-guard ${{ steps.version.outputs.tag }}
           body_path: RELEASE.md
-          files: dist/*
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz

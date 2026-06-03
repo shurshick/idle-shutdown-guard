@@ -109,7 +109,7 @@ rpmbuild -ba packaging/idle-shutdown-guard.spec
 
 ## GitHub Release
 
-Workflow `.github/workflows/release-packages.yml` собирает `.rpm`, `.src.rpm`,
+Workflow `.github/workflows/release-packages.yml` собирает установочный `.rpm`,
 `.deb` и архив исходников, затем прикладывает их к GitHub Release. Он
 запускается автоматически при пуше тега `v*`, либо вручную через
 `workflow_dispatch` с номером версии.

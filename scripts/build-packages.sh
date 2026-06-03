@@ -34,7 +34,7 @@ if command -v rpmbuild >/dev/null 2>&1; then
     --define "_topdir $RPM_TOPDIR" \
     --nodeps \
     -ba "$ROOT_DIR/packaging/$NAME.spec"
-  find "$RPM_TOPDIR/RPMS" "$RPM_TOPDIR/SRPMS" -type f \( -name "*.rpm" -o -name "*.src.rpm" \) \
+  find "$RPM_TOPDIR/RPMS" -type f -name "*.rpm" \
     -exec cp {} "$DIST_DIR/" \;
 else
   echo "rpmbuild is not installed; skipping RPM build" >&2
