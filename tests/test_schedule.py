@@ -32,6 +32,14 @@ def test_default_evening_schedule_runs_overnight_until_quiet_hours():
     assert not guard.should_watch_now(cfg, at(12))
 
 
+def test_default_begin_hour_is_19():
+    cfg = guard.Config()
+
+    assert cfg.begin_hour == 19
+    assert not guard.should_watch_now(cfg, at(18))
+    assert guard.should_watch_now(cfg, at(19))
+
+
 def test_early_begin_hour_still_respects_daytime_pause():
     cfg = guard.Config(begin_hour=5)
 

@@ -46,7 +46,7 @@ systemctl poweroff --ignore-inhibitors
 ```ini
 [settings]
 tray_enabled = yes
-begin_hour = 22
+begin_hour = 19
 idle_minutes = 60
 warning_timeout_minutes = 5
 defer_minutes = 60
@@ -54,7 +54,7 @@ check_interval_seconds = 60
 shutdown_command = systemctl poweroff --ignore-inhibitors
 ```
 
-`begin_hour = 22` означает, что проверка начинается с 22:00 и продолжается
+`begin_hour = 19` означает, что проверка начинается с 19:00 и продолжается
 ночью. С 07:00 до 16:59 мониторинг всегда выключен независимо от этой
 настройки.
 

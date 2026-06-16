@@ -33,7 +33,7 @@ GLib: Any = None
 @dataclass
 class Config:
     tray_enabled: bool = True
-    begin_hour: int = 22
+    begin_hour: int = 19
     idle_minutes: int = 60
     warning_timeout_minutes: int = 5
     defer_minutes: int = 60
