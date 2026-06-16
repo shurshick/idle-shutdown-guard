@@ -1,5 +1,5 @@
 Name:           idle-shutdown-guard
-Version:        0.2.2
+Version:        0.2.3
 Release:        1%{?dist}
 Summary:        User-session idle shutdown guard
 %{!?_userunitdir:%global _userunitdir %{_prefix}/lib/systemd/user}
@@ -45,6 +45,9 @@ install -Dpm0644 desktop/idle-shutdown-guard.desktop \
 %{_sysconfdir}/xdg/autostart/idle-shutdown-guard.desktop
 
 %changelog
+* Tue Jun 16 2026 Codex <codex@example.invalid> - 0.2.3-1
+- Fix monitoring schedule: continue overnight and pause from 07:00 to 16:59.
+
 * Mon Jun 01 2026 Codex <codex@example.invalid> - 0.2.2-1
 - Add XDG autostart entry for RedADM desktop deployment.
 

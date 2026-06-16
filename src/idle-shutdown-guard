@@ -19,6 +19,8 @@ from typing import Any
 APP_NAME = "idle-shutdown-guard"
 SYSTEM_CONFIG = Path("/etc/idle-shutdown-guard/config.ini")
 USER_CONFIG = Path.home() / ".config" / APP_NAME / "config.ini"
+QUIET_START_HOUR = 7
+QUIET_END_HOUR = 17
 ICON_CANDIDATES = [
     Path("/usr/share/icons/hicolor/scalable/apps/idle-shutdown-guard.svg"),
     Path(__file__).resolve().parent.parent / "icons" / "idle-shutdown-guard.svg",
@@ -308,7 +310,12 @@ def run_shutdown(cfg: Config) -> None:
 
 
 def should_watch_now(cfg: Config, now: datetime) -> bool:
-    return now.hour >= cfg.begin_hour
+    hour = now.hour
+    if QUIET_START_HOUR <= hour < QUIET_END_HOUR:
+        return False
+    if cfg.begin_hour >= QUIET_END_HOUR:
+        return hour >= cfg.begin_hour or hour < QUIET_START_HOUR
+    return hour >= cfg.begin_hour
 
 
 @dataclass
@@ -320,7 +327,10 @@ class GuardState:
 def status_text(cfg: Config, state: GuardState) -> str:
     now = datetime.now()
     idle = idle_seconds()
-    parts = [f"Проверка после {cfg.begin_hour:02d}:00"]
+    if should_watch_now(cfg, now):
+        parts = [f"Мониторинг активен с {cfg.begin_hour:02d}:00"]
+    else:
+        parts = [f"Мониторинг выключен до {cfg.begin_hour:02d}:00 или из-за паузы 07:00-17:00"]
     if state.defer_until and now < state.defer_until:
         parts.append(f"Выключение отложено до {state.defer_until.strftime('%H:%M')}")
     if idle is None:

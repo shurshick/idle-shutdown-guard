@@ -54,7 +54,9 @@ check_interval_seconds = 60
 shutdown_command = systemctl poweroff --ignore-inhibitors
 ```
 
-`begin_hour = 22` означает, что проверка выполняется с 22:00 до 23:59.
+`begin_hour = 22` означает, что проверка начинается с 22:00 и продолжается
+ночью. С 07:00 до 16:59 мониторинг всегда выключен независимо от этой
+настройки.
 
 `tray_enabled = yes` включает иконку в трее. Если GTK или системный трей
 недоступны, служба автоматически продолжит работу без иконки.
@@ -92,7 +94,7 @@ RPM и DEB можно собрать одной командой на Linux-ма
 `dpkg-deb`:
 
 ```bash
-bash scripts/build-packages.sh 0.2.2
+bash scripts/build-packages.sh 0.2.3
 ```
 
 Готовые файлы появятся в `dist/`.
@@ -101,8 +103,8 @@ bash scripts/build-packages.sh 0.2.2
 
 ```bash
 mkdir -p ~/rpmbuild/SOURCES
-tar --transform 's,^,idle-shutdown-guard-0.2.2/,' \
-  -czf ~/rpmbuild/SOURCES/idle-shutdown-guard-0.2.2.tar.gz \
+tar --transform 's,^,idle-shutdown-guard-0.2.3/,' \
+  -czf ~/rpmbuild/SOURCES/idle-shutdown-guard-0.2.3.tar.gz \
   src config desktop icons systemd packaging
 rpmbuild -ba packaging/idle-shutdown-guard.spec
 ```

@@ -8,13 +8,13 @@ RPM-пакет.
 1. Собрать релизный RPM:
 
 ```bash
-bash scripts/build-packages.sh 0.2.2
+bash scripts/build-packages.sh 0.2.3
 ```
 
 2. Взять пакет из `dist/`, например:
 
 ```text
-idle-shutdown-guard-0.2.2-1.noarch.rpm
+idle-shutdown-guard-0.2.3-1.noarch.rpm
 ```
 
 3. Загрузить RPM в RedADM и назначить установку на нужную группу клиентов.

@@ -1,6 +1,6 @@
 param(
   [string]$RepoName = "idle-shutdown-guard",
-  [string]$Version = "0.2.2",
+  [string]$Version = "0.2.3",
   [string]$Tag = "v$Version"
 )
 
