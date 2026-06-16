@@ -1,5 +1,5 @@
 Package: idle-shutdown-guard
-Version: @VERSION@
+Version: @DEB_VERSION@
 Section: utils
 Priority: optional
 Architecture: all

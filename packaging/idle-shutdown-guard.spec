@@ -1,6 +1,6 @@
 Name:           idle-shutdown-guard
 Version:        0.2.3
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        User-session idle shutdown guard
 %{!?_userunitdir:%global _userunitdir %{_prefix}/lib/systemd/user}
 
@@ -45,6 +45,9 @@ install -Dpm0644 desktop/idle-shutdown-guard.desktop \
 %{_sysconfdir}/xdg/autostart/idle-shutdown-guard.desktop
 
 %changelog
+* Tue Jun 16 2026 Codex <codex@example.invalid> - 0.2.3-2
+- Change default monitoring start hour to 19:00.
+
 * Tue Jun 16 2026 Codex <codex@example.invalid> - 0.2.3-1
 - Fix monitoring schedule: continue overnight and pause from 07:00 to 16:59.
 

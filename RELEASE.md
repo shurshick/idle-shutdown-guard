@@ -26,8 +26,8 @@
 ## Проверка
 
 - Основной Python-скрипт проходит синтаксическую проверку `py_compile`.
-- В релизе опубликованы установочные пакеты `idle-shutdown-guard-0.2.3-1.noarch.rpm`
-  и `idle-shutdown-guard_0.2.3_all.deb`.
+- В релизе опубликованы установочные пакеты `idle-shutdown-guard-0.2.3-2.noarch.rpm`
+  и `idle-shutdown-guard_0.2.3-2_all.deb`.
 - Архив исходников `idle-shutdown-guard-0.2.3.tar.gz` собран с корневой папкой
   `idle-shutdown-guard-0.2.3`.
 

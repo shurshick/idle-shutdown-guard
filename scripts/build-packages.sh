@@ -8,6 +8,8 @@ VERSION="${1:-}"
 if [[ -z "$VERSION" ]]; then
   VERSION="$(awk '/^Version:/ { print $2; exit }' "$ROOT_DIR/packaging/$NAME.spec")"
 fi
+RPM_RELEASE="$(awk '/^Release:/ { print $2; exit }' "$ROOT_DIR/packaging/$NAME.spec" | sed 's/%.*//')"
+DEB_VERSION="$VERSION-$RPM_RELEASE"
 
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/build"
@@ -50,9 +52,9 @@ if command -v dpkg-deb >/dev/null 2>&1; then
   install -Dpm0644 "$ROOT_DIR/RELEASE.md" "$DEB_ROOT/usr/share/doc/$NAME/RELEASE.md"
   install -Dpm0644 "$ROOT_DIR/LICENSE" "$DEB_ROOT/usr/share/doc/$NAME/copyright"
   install -Dpm0644 "$ROOT_DIR/packaging/deb/conffiles" "$DEB_ROOT/DEBIAN/conffiles"
-  sed "s/@VERSION@/$VERSION/g" "$ROOT_DIR/packaging/deb/control.in" > "$DEB_ROOT/DEBIAN/control"
+  sed "s/@DEB_VERSION@/$DEB_VERSION/g" "$ROOT_DIR/packaging/deb/control.in" > "$DEB_ROOT/DEBIAN/control"
   chmod -R go-w "$DEB_ROOT"
-  dpkg-deb --root-owner-group --build "$DEB_ROOT" "$DIST_DIR/${NAME}_${VERSION}_all.deb"
+  dpkg-deb --root-owner-group --build "$DEB_ROOT" "$DIST_DIR/${NAME}_${DEB_VERSION}_all.deb"
 else
   echo "dpkg-deb is not installed; skipping DEB build" >&2
 fi
